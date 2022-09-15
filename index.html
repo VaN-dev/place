@@ -1,0 +1,129 @@
+<!-- source: https://stackoverflow.com/questions/68151705/rendering-million-elements-on-an-html-canvas-effectively-and-recreate-render-fr -->
+<html lang="">
+    <head>
+        <title>Place</title>
+        <style>
+            canvas {
+                border: 1px solid;
+                background: ivory;
+                cursor: none;
+            }
+        </style>
+    </head>
+    <body>
+        z:<input type=range min=0.5 max=20 step=0.1 id=z-range><br>
+        x:<input type=range min=0 max=500 step=0.1 id=x-range><br>
+        y:<input type=range min=0 max=500 step=0.1 id=y-range><br>
+        <input type=color><br>
+        <canvas width=500 height=500></canvas>
+
+        <script type="text/javascript">
+            // viewport size (canvas)
+            const vw = 500;
+            const vh = 500;
+            // image size (ImageData)
+            const iw = 1000;
+            const ih = 1000;
+
+            // to handle the camera we use a DOMMatrix object
+            // which offers a few handful methods
+            const camera = new DOMMatrix();
+            const [ z_input, x_input, y_input ] = document.querySelectorAll( "[type='range']" );
+            [ z_input, x_input, y_input ].forEach( (elem) => {
+                elem.oninput = updateCamera;
+            } );
+            function updateCamera() {
+                const z = +z_input.value;
+                const x = +x_input.value;
+                const y = +y_input.value;
+                camera.a = camera.d = z;
+                camera.e = vw / 2 - (x * z);
+                camera.f = vh / 2 - (y * z);
+
+                console.log(x);
+
+                draw();
+            }
+
+            const colorinput = document.querySelector( "input[type='color']" );
+            let color = colorinput.value = "#FF0000";
+            colorinput.oninput = (evt) => {
+                color = colorinput.value;
+                draw();
+            };
+
+            // the visible canvas
+            const canvas = document.querySelector( "canvas" );
+            canvas.width = vw;
+            canvas.height = vh;
+            const ctx = canvas.getContext( "2d" );
+            // we hold our pixel's data directly in an ImageData
+            const img = new ImageData( iw, ih );
+            // use a 32 bit view to access each pixel directly as a single value
+            const pixels = new Uint32Array( img.data.buffer );
+            // an other canvas, kept off-screen
+            const scaler = document.createElement( "canvas" );
+            // the size of the ImageData
+            scaler.width = iw;
+            scaler.height = ih;
+            const scalerctx = scaler.getContext( "2d" );
+
+            // fill with white, for demo
+            for(let i=0; i<pixels.length; i++) {
+                pixels[ i ] = '0xFF' + Math.floor(Math.random()*16777215).toString(16);
+            }
+
+            const mouse = { x: 0, y: 0, down: false };
+            canvas.onmousemove = (evt) => {
+                const canvasBBox = canvas.getBoundingClientRect();
+                // relative to the canvas viewport
+                const x = evt.clientX - canvasBBox.left;
+                const y = evt.clientY - canvasBBox.top;
+                // transform it by the current camera
+                const point = camera.inverse().transformPoint( { x, y } );
+                mouse.x = Math.round( point.x );
+                mouse.y = Math.round( point.y );
+
+                if( mouse.down ) {
+                    addPixel( mouse.x, mouse.y, color );
+                }
+                draw();
+            };
+            canvas.onmousedown = (evt) => { mouse.down = true; };
+            document.onmouseup = (evt) => { mouse.down = false; };
+
+            // canvas.onwheel = (evt) => { console.log('wheel'); }
+
+            function draw() {
+                // first draw the ImageData on the scaler canvas
+                scalerctx.putImageData( img, 0, 0 );
+
+                // reset the transform to default
+                ctx.setTransform( 1, 0, 0, 1, 0, 0 );
+                ctx.clearRect( 0, 0, vw, vh );
+                // set the transform to the camera
+                ctx.setTransform( camera );
+
+                // pixel art so no antialising
+                ctx.imageSmoothingEnabled = false;
+                // draw the image data, scaled on the visible canvas
+                ctx.drawImage( scaler, 0, 0 );
+                // draw the (temp) cursor
+                ctx.fillStyle = color;
+                ctx.fillRect( mouse.x, mouse.y, 1, 1 );
+            }
+            function addPixel( x, y, color ) {
+                const index = y * img.width + x;
+                if( index > 0 && index < pixels.length ) {
+                    pixels[ index ] = parseColor( color );
+                }
+            }
+            function parseColor( str ) {
+                return Number( "0xFF" + str.slice(1).match(/.{2}/g).reverse().join("") );
+            }
+
+            // initial call
+            updateCamera();
+        </script>
+    </body>
+</html>
